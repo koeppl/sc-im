@@ -100,6 +100,153 @@ struct key statres[] = {
 #include "tui.h"
 #include "range.h"
 
+static int goto_regex_string(char ** p, char * start) {
+    char * end = start + strlen(start);
+    char * dst;
+
+    while (end > start && isspace((unsigned char) *(end - 1)))
+        end--;
+
+    dst = scxmalloc((unsigned) (end - start) + 1);
+    memcpy(dst, start, (size_t) (end - start));
+    dst[end - start] = '\0';
+    yylval.sval = dst;
+    *p = end;
+    return STRING;
+}
+
+static bool goto_number_arg(const char * p) {
+    bool have_digit = FALSE;
+
+    if (*p == '+' || *p == '-')
+        p++;
+
+    while (isdigit((unsigned char) *p)) {
+        have_digit = TRUE;
+        p++;
+    }
+
+    if (*p == '.') {
+        p++;
+        while (isdigit((unsigned char) *p)) {
+            have_digit = TRUE;
+            p++;
+        }
+    }
+
+    if (! have_digit)
+        return FALSE;
+
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        if (*p == '+' || *p == '-')
+            p++;
+        if (! isdigit((unsigned char) *p))
+            return FALSE;
+        while (isdigit((unsigned char) *p))
+            p++;
+    }
+
+    while (isspace((unsigned char) *p))
+        p++;
+    return *p == '\0';
+}
+
+static const char * goto_cell(const char * p) {
+    int letters = 0;
+
+    if (*p == '$')
+        p++;
+    while (letters < 2 && isalpha((unsigned char) *p) && isascii(*p)) {
+        letters++;
+        p++;
+    }
+    if (! letters || isalpha((unsigned char) *p) || *p == '_')
+        return NULL;
+    if (*p == '$')
+        p++;
+    if (! isdigit((unsigned char) *p))
+        return NULL;
+    while (isdigit((unsigned char) *p))
+        p++;
+    return p;
+}
+
+static const char * goto_var_or_range(const char * p) {
+    const char * q;
+    struct range * r;
+
+    q = goto_cell(p);
+    if (q == NULL && (isalpha((unsigned char) *p) || *p == '_')) {
+        const char * end = p;
+        while (isalpha((unsigned char) *end) || *end == '_' || isdigit((unsigned char) *end))
+            end++;
+        if (! find_range((char *) p, (int) (end - p), (struct ent *) 0, (struct ent *) 0, &r))
+            q = end;
+    }
+    if (q == NULL)
+        return NULL;
+
+    if (*q == ':') {
+        const char * right = goto_cell(q + 1);
+        if (right == NULL)
+            return NULL;
+        q = right;
+    }
+    return q;
+}
+
+static bool goto_target_arg(const char * p) {
+    const char * q = goto_var_or_range(p);
+
+    if (q == NULL)
+        return FALSE;
+    while (isspace((unsigned char) *q))
+        q++;
+    if (*q == '\0')
+        return TRUE;
+
+    q = goto_var_or_range(q);
+    if (q == NULL)
+        return FALSE;
+    while (isspace((unsigned char) *q))
+        q++;
+    return *q == '\0';
+}
+
+static bool goto_arg_is_regex(const char * p, int goto_command) {
+    const char * q;
+
+    if (*p == '"')
+        return FALSE;
+
+    if (*p == '#' || *p == '%') {
+        q = p + 1;
+        while (isspace((unsigned char) *q))
+            q++;
+        return *q != '"';
+    }
+
+    if (goto_number_arg(p))
+        return FALSE;
+
+    if (goto_command == S_GOTO && goto_target_arg(p))
+        return FALSE;
+
+    /* Preserve the more elaborate var syntax handled by gram.y. */
+    if (goto_command == S_GOTO && *p == '{') {
+        q = p + 1;
+        while (isspace((unsigned char) *q))
+            q++;
+        if (*q == '"')
+            return FALSE;
+    }
+    if (goto_command == S_GOTO && *p == '@')
+        return FALSE;
+
+    return TRUE;
+}
+
 /**
  * \brief TODO Document yylex()
  *
@@ -111,14 +258,21 @@ int yylex() {
     int ret = 0;
     static int isfunc = 0;
     static bool isgoto = 0;
+    static bool goto_arg_start = 0;
+    static int goto_command = 0;
     static bool colstate = 0;
     static int dateflag;
     static char *tokenst = NULL;
     static int tokenl;
 
     while (isspace(*p)) p++;
-    if (*p == '\0') {
-        isfunc = isgoto = 0;
+    if (isgoto && goto_arg_start && *p != '\0' && goto_arg_is_regex(p, goto_command)) {
+        ret = goto_regex_string(&p, p);
+        isfunc = isgoto = goto_arg_start = 0;
+        goto_command = 0;
+    } else if (*p == '\0') {
+        isfunc = isgoto = goto_arg_start = 0;
+        goto_command = 0;
         ret = -1;
     } else if (isalpha(*p) || (*p == '_')) {
         register char *la;    /* lookahead pointer */
@@ -332,7 +486,13 @@ int yylex() {
     }
     linelim = p-line;
     if (!isfunc) isfunc = ((ret == '@') + (ret == S_GOTO) - (ret == S_SET));
-    if (ret == S_GOTO) isgoto = TRUE;
+    if (ret == S_GOTO || ret == S_GOTOB) {
+        isgoto = TRUE;
+        goto_arg_start = TRUE;
+        goto_command = ret;
+    } else if (isgoto && goto_arg_start) {
+        goto_arg_start = FALSE;
+    }
     tokenst = NULL;
     return ret;
 }
