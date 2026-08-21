@@ -219,9 +219,10 @@ void do_visualmode(struct block * buf) {
 
     // MOVEMENT COMMANDS
     // UP - ctl(b)
-    } else if (buf->value == OKEY_UP || buf->value == L'k' || buf->value == ctl('b') ) {
+    } else if (buf->value == OKEY_UP || buf->value == L'k' ||
+            buf->value == ctl('b') || buf->value == OKEY_PGUP) {
         int n, i;
-        if (buf->value == ctl('b')) {
+        if (buf->value == ctl('b') || buf->value == OKEY_PGUP) {
             n = SC_DISPLAY_ROWS;
             if (get_conf_value("half_page_scroll")) n = n / 2;
         } else n = 1;
@@ -239,9 +240,10 @@ void do_visualmode(struct block * buf) {
             }
 
     // DOWN - ctl('f')
-    } else if (buf->value == OKEY_DOWN || buf->value == L'j' || buf->value == ctl('f')) {
+    } else if (buf->value == OKEY_DOWN || buf->value == L'j' ||
+            buf->value == ctl('f') || buf->value == OKEY_PGDOWN) {
         int n, i;
-        if (buf->value == ctl('f')) {
+        if (buf->value == ctl('f') || buf->value == OKEY_PGDOWN) {
             n = SC_DISPLAY_ROWS;
             if (get_conf_value("half_page_scroll")) n = n / 2;
         } else n = 1;

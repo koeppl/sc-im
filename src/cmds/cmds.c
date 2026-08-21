@@ -3049,10 +3049,12 @@ int is_single_command (struct block * buf, long timeout) {
                  buf->value == OKEY_DOWN ||
                  buf->value == L'k' ||
                  buf->value == OKEY_UP    ||
+                 buf->value == OKEY_PGUP  ||
                  buf->value == L'h' ||
                  buf->value == OKEY_LEFT ||
                  buf->value == L'l' ||
                  buf->value == OKEY_RIGHT ||
+                 buf->value == OKEY_PGDOWN ||
                  buf->value == L'$' ||
                  buf->value == L'0' ||
                  buf->value == L'#' ||
